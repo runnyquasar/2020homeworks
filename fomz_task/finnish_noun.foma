@@ -1,0 +1,91 @@
+# здесь задается алфавит букв финского языкa; внутри алфавита есть подмножества гласных согласно их качеству
+define Consonant b | c | d | f | g | h | j | k | l | m | n | p | q | r | s | t | v | w | x | z ;
+define FrontVowel ä | ö | y ;
+define NeutralVowel e | i ;
+define BackVowel a | o | u ;
+define Vowel FrontVowel | NeutralVowel | BackVowel | A | E;
+define Letter Vowel | Consonant;
+
+# задаем глоссы числа и падежа, с которыми существительные будут подаваться фоме на обработку
+define Case "+Nom" | "+Gen" | "+Part" | "+In" | "+All" ;
+define Number "+Sg" | "+Pl" ; 
+
+# здесь мы определяем устройство основ переднего и заднего ряда по правилам финского сингармонизма. ну и просто множество корней для последующего парсинга. 
+define FrontStem [Consonant* [ FrontVowel | NeutralVowel ] ]+ Consonant*;
+define BackStem [Consonant* [ BackVowel | NeutralVowel ] ]* [Consonant* BackVowel] [Consonant* [ BackVowel | NeutralVowel ] ]* Consonant*;
+define Stem Letter+;
+
+define Input Stem Number Case;
+
+# задаем формы номинатива по правилам грамматики. в последней строчке склеиваем номинатив сингулярис и плюралис в один большой номинатив. здесь и ниже код указывает, 
+# что и куда нужно поставить, чтобы получилась нужная форма слова.
+define NomPl "+Pl" "+Nom" -> "^" t || _ ;
+define NomSg "+Sg" "+Nom" -> "^" || _ ;
+define Nominatives NomPl .o. NomSg ;
+
+# делаем генитив, тоже склеивая потом множественное и единственное число. в генитиве ден задаем условие основы дифтонга и множественного числа.
+define GenDen "+Gen" -> d e n || Vowel Vowel "+Pl" _ ;
+define Gen "+Gen" -> E n || _ ;
+define Genetive GenDen .o. Gen ;
+
+# условия партитива на дифтонги и согласные и условия партитива на все остальное
+define PartTa "+Part" -> t A || [ Consonant Vowel Vowel | Consonant ] Number _ ;
+define PartA "+Part" -> A || _ ;
+
+
+define LocativeCases "+In" -> s s A , "+All" -> l l A || _ ;
+
+define OtherCases PartTa .o. PartA .o. LocativeCases ;
+
+# задаем чередование основ. показываем, в каких условиях опускаются гласные, чередуются, а в каких просто ничего не просиходит. 
+# это все происходит во множественном числе.
+define Sg "+Sg" -> "^" || _ ;
+define OmitA ä -> 0, i -> 0 || _ "+Pl";
+define Ai2Oi a -> o || [ a | e | i ] Vowel* Consonant+ _ "+Pl";
+define Ai2i a -> 0 || [ o | u ] Vowel* Consonant+ _ "+Pl";
+define OmitFirst Vowel -> 0 || _ Vowel "+Pl" Consonant;
+define Pl "+Pl" -> "^" i || _ ;
+
+
+define NumberInfl Sg .o. OmitA .o. Ai2i .o. Ai2Oi .o. OmitFirst .o. Pl ;
+
+# в первой строчке задан переход и в йот в окончаниях множественного числа в отдельной морфеме. вторая и третья строчка присваивают качественные значения гласным в условиях сингармонизма
+define JotPl i -> j || Vowel "^"* _ "^"* Vowel ;
+define HarmonyBack A -> a || BackStem "^" Letter* _;
+define HarmonyFront A -> ä || FrontStem "^" Letter* _;
+
+define Phonetics JotPl .o. HarmonyBack .o. HarmonyFront ;
+
+# задаем чередования согласных в закрытых слогах и в основе
+define DoublePTK p p -> p , t t -> t , k k -> k || Letter _ "^"* Vowel "^"* Consonant [ .#. | Consonant ] ;
+define SingleP p -> v || Vowel _ "^"* Vowel "^"* Consonant [ .#. | Consonant ] ;
+define SingleTK t -> d , k -> 0 || Letter _ "^"* Vowel "^"* Consonant [ .#. | Consonant ] ; 
+define TwoLetter m p -> m m , n t -> n n , n k -> n g , l t -> l l , r t -> r r || Letter _ "^"* Vowel "^"* Consonant [ .#. | Consonant ] ;
+define ThreeLetter l k e -> l j e , r k e -> r j e , h k e -> h j e , u k u -> u v u || Letter _ "^"* Consonant [ .#. | Consonant ] ;
+define N2M i n -> i m , t ö n -> t t ö m || _ "^" Vowel ;
+define EOmit E -> 0 || Vowel "^" _;
+define EReal E -> e || _;
+
+# делаем словоизменение для класса ihminen
+define NenSG n e n -> s E || _ "^" Vowel;
+define NenPart s E -> s || Vowel _ t [ a | ä]; 
+# словоизменение для класса ajatus
+define UsSG s -> k s || Vowel  _  "^"  Vowel; 
+# словоизменение для класса lyhyt
+define Tchange t -> e || [ u | y ] _ "^" "+Sg"; 
+define Tomit t -> i || [ u | y ] _ "^" s s [ a | ä];
+# словоизменение для класса askel 
+define Lchange l -> l e, n -> n e || [ e ] _ "+Sg";
+
+
+define Alternations NenSG .o. UsSG .o. Tchange .o. Tomit .o. Lchange .o. N2M  .o. EOmit .o. EReal .o. ThreeLetter .o. TwoLetter .o. SingleP .o. SingleTK .o. DoublePTK;
+
+# задаем алгоритмы применения словоизменительных аффиксов
+define Affixes Nominatives .o. Genetive .o. OtherCases .o. NumberInfl .o. Alternations .o. Phonetics;
+
+# чистим выдачу от значков конца морфемы
+define Cleanup "^" -> 0 || _ ;
+
+# задаем грамматику, которая состоит из текста в инпуте, применения словоизменительных правил и очистки текста. 
+define Grammar Input .o. Affixes .o. Cleanup ;
+push Grammar
